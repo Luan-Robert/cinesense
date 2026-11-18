@@ -77,6 +77,10 @@ app.py            interface Streamlit (sem lógica de negócio)
 tests/            testes unitários com TMDB simulada
 ```
 
+## Licença
+
+[MIT](LICENSE) © 2026 Luan Robert
+
 ---
 
 Dados de filmes fornecidos pela [TMDB](https://www.themoviedb.org/). Este produto usa a
