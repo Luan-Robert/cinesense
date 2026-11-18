@@ -1,0 +1,18 @@
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_USER: filmes
+      POSTGRES_PASSWORD: filmes
+      POSTGRES_DB: filmes
+    ports:
+      - "5433:5432"  # 5433 no PC para não conflitar com um PostgreSQL local
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U filmes"]
+      interval: 5s
+      retries: 10
+
+volumes:
+  pgdata:
