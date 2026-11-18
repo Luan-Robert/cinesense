@@ -7,10 +7,11 @@ import streamlit as st
 from recomendador.config import get_settings
 from recomendador.db import MovieStore
 from recomendador.embeddings import Embedder
+from recomendador.llm import GeminiReranker, LlmError, Pick
 from recomendador.recommender import Recommender
 from recomendador.tmdb import Movie, TmdbClient, TmdbError
 
-st.set_page_config(page_title="Recomendador de Filmes com IA", page_icon="🎬", layout="wide")
+st.set_page_config(page_title="CineSense", page_icon="🎬", layout="wide")
 settings = get_settings()
 
 
@@ -21,8 +22,15 @@ def get_recommender() -> Recommender:
     return Recommender(tmdb, store, Embedder(settings.embedding_model))
 
 
-st.title("🎬 Recomendador de Filmes com IA")
-st.caption("Escolha filmes que você gostou e receba sugestões que vão além do gênero.")
+@st.cache_resource
+def get_reranker() -> GeminiReranker | None:
+    if not settings.gemini_api_key:
+        return None
+    return GeminiReranker(settings.gemini_api_key, settings.gemini_models)
+
+
+st.title("🎬 CineSense")
+st.caption("Recomendações que entendem clima, emoção e contexto, não só gênero e nota.")
 
 try:
     rec = get_recommender()
@@ -49,6 +57,12 @@ with st.sidebar:
     discovery = st.slider("Descoberta", 0.0, 1.0, 0.3,
                           help="Quanto mais alto, mais filmes desconhecidos aparecem.")
     k = st.slider("Quantas sugestões", 5, 20, 10)
+    reranker = get_reranker()
+    use_llm = st.toggle("Refinar com IA (Gemini)", value=reranker is not None,
+                        disabled=reranker is None,
+                        help="O LLM reordena pelo clima e explica cada sugestão, sem spoilers.")
+    if reranker is None:
+        st.caption("Coloque GEMINI_API_KEY no .env para ativar.")
 
 query = st.text_input("Buscar um filme que você gostou")
 if query:
@@ -63,16 +77,34 @@ if query:
             st.rerun()
 
 st.divider()
+mood = st.text_input("Do que você está a fim? (opcional)",
+                     placeholder="Ex.: algo tenso, mas sem gore exagerado",
+                     disabled=not use_llm)
+
 if st.button("Recomendar", type="primary", disabled=not liked):
-    with st.spinner("Analisando seus gostos..."):
-        results = rec.recommend(list(liked), k=k, discovery=discovery)
-    cols = st.columns(5)
-    for i, cand in enumerate(results):
-        with cols[i % 5]:
-            if cand.movie.poster_url:
-                st.image(cand.movie.poster_url)
-            st.markdown(f"**{cand.movie.title}** ({cand.movie.year})")
-            st.caption(f"Afinidade: {cand.similarity:.0%} · ⭐ {cand.movie.vote_average:.1f}")
+    picks: list[Pick]
+    with st.spinner("Buscando candidatos..."):
+        # Com IA, buscamos 3x mais candidatos para o LLM escolher os melhores.
+        pool = rec.recommend(list(liked), k=k * 3 if use_llm else k, discovery=discovery)
+    picks = [Pick(c, None, None) for c in pool[:k]]
+    if use_llm and reranker is not None:
+        with st.spinner("A IA está analisando o clima de cada filme..."):
+            try:
+                picks = reranker.rerank(list(liked.values()), pool, k=k, mood=mood)
+                st.caption(f"Refinado por {reranker.last_model} · {reranker.last_tokens} tokens")
+            except LlmError as e:
+                st.warning(f"A IA não respondeu agora; mostrando só a busca por similaridade. ({e})")
+
+    for p in picks:
+        m = p.candidate.movie
+        c1, c2 = st.columns([1, 5])
+        if m.poster_url:
+            c1.image(m.poster_url, width=110)
+        score = f"Nota da IA: {p.score:.0f}/10 · " if p.score is not None else ""
+        c2.markdown(f"**{m.title}** ({m.year}) · {', '.join(m.genres)}")
+        c2.caption(f"{score}Afinidade: {p.candidate.similarity:.0%} · ⭐ {m.vote_average:.1f}")
+        if p.reason:
+            c2.write(p.reason)
 
 st.caption("Dados de filmes fornecidos pela TMDB. Este produto usa a API da TMDB, "
            "mas não é endossado nem certificado pela TMDB.")

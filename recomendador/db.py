@@ -36,6 +36,17 @@ CREATE TABLE IF NOT EXISTS review_summaries (
 """
 
 
+def as_array(value) -> np.ndarray:
+    """Converte o valor de uma coluna vector em array.
+
+    Versões recentes do pgvector devolvem um objeto Vector, não uma lista
+    (bug encontrado no primeiro teste com dados reais).
+    """
+    if hasattr(value, "to_numpy"):
+        value = value.to_numpy()
+    return np.asarray(value, dtype=np.float32)
+
+
 @dataclass
 class Candidate:
     movie: Movie
@@ -79,9 +90,7 @@ class MovieStore:
             "SELECT embedding FROM movies WHERE id = ANY(%s) AND embedding IS NOT NULL",
             (ids,),
         ).fetchall()
-        # Versões recentes do pgvector devolvem um objeto Vector, não uma lista.
-        vecs = [r[0].to_numpy() if hasattr(r[0], "to_numpy") else r[0] for r in rows]
-        return np.array(vecs, dtype=np.float32)
+        return np.array([as_array(r[0]) for r in rows], dtype=np.float32)
 
     def nearest(self, profile: np.ndarray, exclude: list[int], limit: int) -> list[Candidate]:
         # <=> é a distância de cosseno do pgvector; similaridade = 1 - distância.

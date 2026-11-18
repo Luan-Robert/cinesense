@@ -18,6 +18,8 @@ class Settings:
     embedding_dim: int
     language: str
     region: str
+    gemini_api_key: str
+    gemini_models: list[str]
 
 
 def get_settings() -> Settings:
@@ -30,4 +32,13 @@ def get_settings() -> Settings:
         embedding_dim=int(os.getenv("EMBEDDING_DIM", "384")),
         language=os.getenv("TMDB_LANGUAGE", "pt-BR"),
         region=os.getenv("TMDB_REGION", "BR"),
+        gemini_api_key=os.getenv("GEMINI_API_KEY", ""),
+        # Primeiro o mais rápido e barato; os outros são reserva se ele falhar.
+        gemini_models=[
+            m.strip()
+            for m in os.getenv(
+                "GEMINI_MODELS", "gemini-3.5-flash-lite,gemini-3.5-flash,gemini-4-hydrogen"
+            ).split(",")
+            if m.strip()
+        ],
     )

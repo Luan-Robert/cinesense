@@ -5,3 +5,4 @@ psycopg[binary]>=3.2
 pgvector>=0.3
 sentence-transformers>=3.0
 streamlit>=1.40
+google-genai>=1.0
